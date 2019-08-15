@@ -1,0 +1,83 @@
+package com.wy.core.security.filter;
+
+import com.wy.common.constant.SimpleConstant;
+import com.wy.common.utils.RedisUtil;
+import com.wy.module.sys.entity.Resource;
+import com.wy.module.sys.entity.Role;
+import com.wy.module.sys.entity.User;
+import com.wy.module.sys.service.ResourceService;
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.web.access.WebInvocationPrivilegeEvaluator;
+import org.springframework.stereotype.Component;
+
+import java.util.LinkedList;
+import java.util.List;
+
+/**
+ * @Author OZY
+ * @Date 2019/07/19 20:38
+ * @Description URL标签权限认证
+ * @Version V1.0
+ **/
+@Component
+public class SecTagPrivilegeEvaluator implements WebInvocationPrivilegeEvaluator {
+
+    public static final Logger logger = LoggerFactory.getLogger(SecTagPrivilegeEvaluator.class);
+
+    public static final String AUTH_SECURITY_RESOURCE_TAG_KEY = "auth_security_resource_tag";
+
+
+    @javax.annotation.Resource
+    private ResourceService resourceService;
+
+    @javax.annotation.Resource
+    private RedisUtil redisUtil;
+
+
+
+    @Override
+    public boolean isAllowed(String uri, Authentication authentication) {
+        logger.info("isAllowed1 uri:" + uri + "  authentication:" + authentication.getPrincipal().toString());
+        return true;
+    }
+
+    /**
+     * 判断是否有该资源权限
+     * @param contextPath
+     * @param uri
+     * @param method
+     * @param authentication
+     * @return
+     */
+    @Override
+    public boolean isAllowed(String contextPath, String uri, String method, Authentication authentication) {
+        //获取标签资源
+        List<Object> authTabList = redisUtil.lGet(AUTH_SECURITY_RESOURCE_TAG_KEY);
+        if (authTabList.size() == 0) {
+            authTabList = new LinkedList<>(resourceService.findAllByType(SimpleConstant.RESOURCE_TYPE_TAG));
+            //放入redis缓存
+            redisUtil.lSet(AUTH_SECURITY_RESOURCE_TAG_KEY, authTabList);
+        }
+
+        //判断该角色是否存在访问该资源的权限
+        //默认每个用户都会对应一个角色
+        GrantedAuthority grantedAuthority = authentication.getAuthorities().iterator().next();
+        for (Object o : authTabList) {
+            Resource resource = (Resource) o;
+            if (StringUtils.equals(uri, resource.getUrl())) {
+                for (Role role : resource.getRoles()) {
+                    if (StringUtils.equals(role.getRoleKey(), grantedAuthority.getAuthority())) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+
+}
